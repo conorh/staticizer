@@ -68,7 +68,12 @@ module Staticizer
     end
 
     def extract_css_urls(css, base_uri)
-      css.scan(/url\(([^)]+)\)/).map {|src| make_absolute(base_uri, src[0]) }
+      css.scan(/url\(([^)]+)\)/).map do |src|
+        path = src[0]
+        # URLS in css can be wrapped with " or 'ex: url("http:://something/"), strip these
+        path = path.strip.gsub(/^['"]/, "").gsub(/['"]$/,"")
+        make_absolute(base_uri, path)
+      end
     end
 
     def add_urls(urls, info = {})
@@ -176,6 +181,7 @@ module Staticizer
         add_urls(extract_scripts(doc, parsed_uri), {:type_hint => "script"})
         add_urls(extract_images(doc, parsed_uri), {:type_hint => "image"})
         add_urls(extract_hrefs(doc, parsed_uri), {:type_hint => "href"})
+        add_urls(extract_css_urls(body, parsed_uri), {:type_hint => "css_url"})
       else
         save_page(response, parsed_uri)
       end
