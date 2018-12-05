@@ -42,6 +42,15 @@ module Staticizer
       @log.info("Finished crawl")
     end
 
+    def extract_videos(doc, base_uri)
+      doc.xpath("//video").map do |video|
+        sources = video.xpath("//source/@src").map {|src| make_absolute(base_uri, src)}
+        poster = video.attributes["poster"].to_s
+        make_absolute(base_uri, poster)
+        [poster, sources]
+      end.flatten.uniq.compact
+    end
+
     def extract_hrefs(doc, base_uri)
       doc.xpath("//a/@href").map {|href| make_absolute(base_uri, href) }
     end
@@ -158,14 +167,15 @@ module Staticizer
       case response['content-type']
       when /css/
         save_page(response, parsed_uri)
-        add_urls(extract_css_urls(response.body, url), {:type_hint => "css_url"})
+        add_urls(extract_css_urls(response.body, parsed_uri), {:type_hint => "css_url"})
       when /html/
         save_page(response, parsed_uri)
         doc = Nokogiri::HTML(response.body)
-        add_urls(extract_links(doc, url), {:type_hint => "link"})
-        add_urls(extract_scripts(doc, url), {:type_hint => "script"})
-        add_urls(extract_images(doc, url), {:type_hint => "image"})
-        add_urls(extract_hrefs(doc, url), {:type_hint => "href"})
+        add_urls(extract_videos(doc, parsed_uri), {:type_hint => "video"})
+        add_urls(extract_links(doc, parsed_uri), {:type_hint => "link"})
+        add_urls(extract_scripts(doc, parsed_uri), {:type_hint => "script"})
+        add_urls(extract_images(doc, parsed_uri), {:type_hint => "image"})
+        add_urls(extract_hrefs(doc, parsed_uri), {:type_hint => "href"})
       else
         save_page(response, parsed_uri)
       end
