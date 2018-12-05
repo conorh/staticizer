@@ -110,14 +110,6 @@ module Staticizer
       @url_queue << [url, info]
     end
 
-    def save_page(response, uri)
-      if @opts[:aws]
-        save_page_to_aws(response, uri)
-      else
-        save_page_to_disk(response, uri)
-      end
-    end
-
     def save_page(response, uri, opts = {})
       if @opts[:aws]
         save_page_to_aws(response, uri, opts)
@@ -215,9 +207,9 @@ module Staticizer
 
     # If we hit a redirect we save the redirect as a meta refresh page
     # TODO: for AWS S3 hosting we could instead create a redirect?
-    def process_redirect(url, destination_url)
+    def process_redirect(url, destination_url, opts = {})
       body = "<html><head><META http-equiv='refresh' content='0;URL=\"#{destination_url}\"'></head><body>You are being redirected to <a href='#{destination_url}'>#{destination_url}</a>.</body></html>"
-      save_page_to_aws(body, url)
+      save_page(body, url, opts)
     end
 
     # Fetch a URI and save it to disk
@@ -232,6 +224,7 @@ module Staticizer
       connection = @http_connections[key]
       if connection.nil?
         connection = Net::HTTP.new(parsed_uri.host, parsed_uri.port)
+        connection.use_ssl = true if parsed_uri.scheme == "https"
         @http_connections[key] = connection
       end
 
