@@ -118,9 +118,17 @@ module Staticizer
       end
     end
 
-    def save_page_to_disk(response, uri)
+    def save_page(response, uri, opts = {})
+      if @opts[:aws]
+        save_page_to_aws(response, uri, opts)
+      else
+        save_page_to_disk(response, uri, opts)
+      end
+    end
+
+    def save_page_to_disk(response, uri, opts = {})
       path = uri.path
-      path += "?#{uri.query}" if uri.query
+      path += "?#{uri.query}" if uri.query && !opts[:no_query] && !@opts[:no_query]
 
       path_segments = path.scan(%r{[^/]*/})
       filename = path.include?("/") ? path[path.rindex("/")+1..-1] : path
@@ -145,23 +153,29 @@ module Staticizer
       end
 
       body = response.respond_to?(:read_body) ? response.read_body : response
+      body = @opts[:process_body].call(body, uri, opts) if @opts[:process_body]
       outfile = File.join(current, "/#{filename}")
+
       if filename == ""
         indexfile = File.join(outfile, "/index.html")
+        return if opts[:no_overwrite] && File.exists?(indexfile)
         @log.info "Saving #{indexfile}"
         File.open(indexfile, "wb") {|f| f << body }
       elsif File.directory?(outfile)
         dirfile = outfile + ".d"
+        outfile = File.join(outfile, "/index.html")
+        return if opts[:no_overwrite] && File.exists?(outfile)
         @log.info "Saving #{dirfile}"
         File.open(dirfile, "wb") {|f| f << body }
-        FileUtils.cp(dirfile, File.join(outfile, "/index.html"))
+        FileUtils.cp(dirfile, outfile)
       else
+        return if opts[:no_overwrite] && File.exists?(outfile)
         @log.info "Saving #{outfile}"
         File.open(outfile, "wb") {|f| f << body }
       end
     end
 
-    def save_page_to_aws(response, uri)
+    def save_page_to_aws(response, uri, opts = {})
       key = uri.path
       key += "?#{uri.query}" if uri.query
       key = key.gsub(%r{^/},"")
@@ -181,19 +195,21 @@ module Staticizer
       url = parsed_uri.to_s
       case response['content-type']
       when /css/
-        save_page(response, parsed_uri)
+        save_page(response, parsed_uri, no_query: true)
         add_urls(extract_css_urls(response.body, parsed_uri), {:type_hint => "css_url"})
       when /html/
-        save_page(response, parsed_uri)
-        doc = Nokogiri::HTML(response.body)
+        body = response.body
+        save_page(body.gsub("https://www.canaan.com", ""), parsed_uri)
+        doc = Nokogiri::HTML(body)
         add_urls(extract_videos(doc, parsed_uri), {:type_hint => "video"})
         add_urls(extract_links(doc, parsed_uri), {:type_hint => "link"})
         add_urls(extract_scripts(doc, parsed_uri), {:type_hint => "script"})
         add_urls(extract_images(doc, parsed_uri), {:type_hint => "image"})
         add_urls(extract_hrefs(doc, parsed_uri), {:type_hint => "href"})
+        # extract inline style="background-image:url('https://')" type of urls
         add_urls(extract_css_urls(body, parsed_uri), {:type_hint => "css_url"})
       else
-        save_page(response, parsed_uri)
+        save_page(response, parsed_uri, no_query: true)
       end
     end
 
